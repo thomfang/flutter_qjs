@@ -10,24 +10,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_qjs/flutter_qjs.dart';
 
-import 'highlight.dart';
+// import 'highlight.dart';
 
 void main() {
   runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key key}) : super(key: key);
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'flutter_qjs',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        appBarTheme: AppBarTheme(brightness: Brightness.dark, elevation: 0),
-        backgroundColor: Colors.grey[300],
-        primaryColorBrightness: Brightness.dark,
+        appBarTheme: AppBarTheme(
+            elevation: 0, systemOverlayStyle: SystemUiOverlayStyle.light),
+        colorScheme: ColorScheme.light(
+          background: Colors.grey[300]!,
+        ),
       ),
       routes: {
         'home': (BuildContext context) => TestPage(),
@@ -43,12 +43,15 @@ class TestPage extends StatefulWidget {
 }
 
 class _TestPageState extends State<TestPage> {
-  String resp;
-  IsolateQjs engine;
+  String resp = '';
+  IsolateQjs? engine;
 
-  CodeInputController _controller = CodeInputController(
-      text: 'import("hello").then(({default: greet}) => greet("world"));');
+  // CodeInputController _controller = CodeInputController(
+  //     text: 'import("hello").then(({default: greet}) => greet("world"));');
 
+  TextEditingController _controller = TextEditingController(
+    text: 'import("hello").then(({default: greet}) => greet("world"));',
+  );
   _ensureEngine() async {
     if (engine != null) return;
     engine = IsolateQjs(
@@ -79,8 +82,8 @@ class _TestPageState extends State<TestPage> {
                       onPressed: () async {
                         await _ensureEngine();
                         try {
-                          resp = (await engine.evaluate(_controller.text ?? '',
-                                  name: "<eval>"))
+                          resp = (await engine!
+                                  .evaluate(_controller.text, name: "<eval>"))
                               .toString();
                         } catch (e) {
                           resp = e.toString();
@@ -91,7 +94,7 @@ class _TestPageState extends State<TestPage> {
                       child: Text("reset engine"),
                       onPressed: () async {
                         if (engine == null) return;
-                        await engine.close();
+                        await engine!.close();
                         engine = null;
                       }),
                 ],
@@ -116,7 +119,7 @@ class _TestPageState extends State<TestPage> {
               padding: const EdgeInsets.all(12),
               color: Colors.green.withOpacity(0.05),
               constraints: BoxConstraints(minHeight: 100),
-              child: Text(resp ?? ''),
+              child: Text(resp),
             ),
           ],
         ),

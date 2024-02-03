@@ -16,7 +16,7 @@ This plugin is a simple js engine for flutter using the `quickjs` project. Plugi
   s.compiler_flags = '-DDUMP_LEAKS'
   s.source_files = ['Classes/**/*', 'cxx/*.{c,cpp}']
   s.dependency 'Flutter'
-  s.platform = :ios, '8.0'
+  s.platform = :ios, '12.0'
 
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }

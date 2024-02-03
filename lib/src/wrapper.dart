@@ -164,7 +164,7 @@ dynamic _jsToDart(Pointer<JSContext> ctx, Pointer<JSValue> val,
       }
       final psize = malloc<IntPtr>();
       final buf = jsGetArrayBuffer(ctx, psize, val);
-      final size = psize.value;
+      final size = psize.address;
       malloc.free(psize);
       if (buf.address != 0) {
         return Uint8List.fromList(buf.asTypedList(size));
