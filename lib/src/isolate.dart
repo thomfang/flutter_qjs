@@ -152,7 +152,8 @@ void _runJsIsolate(Map spawnMessage) async {
           qjs.close();
           port.close();
           data = true;
-          break;
+          Isolate.exit(msgPort, _encodeData(data));
+        // break;
       }
       if (msgPort != null) msgPort.send(_encodeData(data));
     } catch (e) {
