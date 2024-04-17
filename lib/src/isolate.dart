@@ -133,12 +133,23 @@ void _runJsIsolate(Map spawnMessage) async {
       malloc.free(ret);
       return retString;
     },
-  );
+  )..consoleMessage = (level, message) => sendPort.send({
+        #type: #console,
+        #level: level,
+        #message: message,
+      });
+
   port.listen((msg) async {
     var data;
     SendPort? msgPort = msg[#port];
     try {
       switch (msg[#type]) {
+        case #setInternalModule:
+          qjs.setInternalModule(
+            msg[#moduleName],
+            msg[#code],
+          );
+          break;
         case #evaluate:
           data = await qjs.evaluate(
             msg[#command],
@@ -238,6 +249,14 @@ class IsolateQjs {
             ptr.value = Pointer.fromAddress(-1);
           }
           break;
+        case #console:
+          if (consoleMessage != null) {
+            consoleMessage!(
+              msg[#level],
+              msg[#message],
+            );
+          }
+          break;
       }
     }, onDone: () {
       close();
@@ -247,10 +266,13 @@ class IsolateQjs {
     _sendPort = completer.future;
   }
 
+  void Function(String level, String message)? consoleMessage;
+
   /// Free Runtime and close isolate thread that can be recreate when evaluate again.
   close() {
     final sendPort = _sendPort;
     _sendPort = null;
+    consoleMessage = null;
     if (sendPort == null) return;
     final ret = sendPort.then((sendPort) async {
       final closePort = ReceivePort();
@@ -265,6 +287,23 @@ class IsolateQjs {
       return _decodeData(result);
     });
     return ret;
+  }
+
+  Future<void> setInternalModule(
+    String moduleName,
+    String code,
+  ) async {
+    _ensureEngine();
+    final evaluatePort = ReceivePort();
+    final sendPort = await _sendPort!;
+    sendPort.send({
+      #type: #setInternalModule,
+      #moduleName: moduleName,
+      #code: code,
+      #port: evaluatePort.sendPort,
+    });
+    await evaluatePort.first;
+    evaluatePort.close();
   }
 
   /// Evaluate js script.
