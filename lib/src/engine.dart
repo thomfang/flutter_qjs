@@ -41,6 +41,14 @@ class FlutterQjs {
   /// Handler function to manage js module.
   final _JsHostPromiseRejectionHandler? hostPromiseRejectionHandler;
 
+  String _scriptRoot = Directory.current.path;
+
+  void setScriptRoot(String value) {
+    if (_scriptRoot != value) {
+      _scriptRoot = value;
+    }
+  }
+
   final _internalModule = <String, String>{};
 
   void setInternalModule(String moduleName, String code) {
@@ -174,7 +182,7 @@ class FlutterQjs {
       '''(handlers) => {
       let cachedModules = {};
 
-      this.__require__ = (filePath, dirname) => {
+      let importModule = (filePath, dirname) => {
         let moduleString = null;
         let modulePath = filePath;
 
@@ -199,6 +207,10 @@ class FlutterQjs {
         const mod = func()
         cachedModules[modulePath] = mod
         return mod.exports
+      };
+
+      this.__require__ = (filePath, dirname) => {
+        return importModule(filePath, dirname);
       };
 
       let timerId = 0;
@@ -319,9 +331,18 @@ class FlutterQjs {
   // void _consoleError(List args) {}
 
   String _resolvePath(String dirname, String filePath) {
-    return path.canonicalize(
-      path.join(dirname, filePath, '.js'),
+    var result = path.canonicalize(
+      path.join(dirname, filePath),
     );
+
+    if (FileSystemEntity.isDirectorySync(result) &&
+        FileSystemEntity.isFileSync(
+          path.join(result, 'index.js'),
+        )) {
+      result = path.join(result, 'index');
+    }
+
+    return result;
   }
 
   bool _isInternalModule(String moduleName) {
@@ -333,10 +354,20 @@ class FlutterQjs {
   }
 
   String? _importModule(String filePath) {
+    final ext = path.extension(filePath);
+    if (ext.isEmpty) {
+      filePath = filePath + '.js';
+    }
     final file = File(filePath);
+
     if (file.existsSync()) {
       final code = file.readAsStringSync();
-      return _createModule(
+      if (ext == '.json') {
+        return _createJSONModule(
+          code: code,
+        );
+      }
+      return _createJSModule(
         code: code,
         dirname: path.dirname(filePath),
       );
@@ -344,22 +375,33 @@ class FlutterQjs {
     return null;
   }
 
-  String _createModule({
+  String _createJSModule({
     required String code,
     required String dirname,
   }) {
-    return ''';(function () {
+    return '''(function () {
       var m = {};
       var e = {};
       m.exports = e;
       function r(filePath) {
         return __require__(filePath, '$dirname');
       }
-      (function (module, exports, require) {
+      function exec(module, exports, require) {
         $code;
-      })(m, e, r)
+      }
+      exec(m, e, r)
       return m;
-    })();''';
+    })()''';
+  }
+
+  String _createJSONModule({
+    required String code,
+  }) {
+    return '''(function () {
+      return (
+        $code
+      );
+    })()''';
   }
 
   /// Dispatch JavaScript Event loop.
@@ -374,12 +416,18 @@ class FlutterQjs {
     String command, {
     String? name,
     int? evalFlags,
+    bool asCommonJSModule = false,
   }) {
     _ensureEngine();
     final ctx = _ctx!;
     final jsval = jsEval(
       ctx,
-      command,
+      asCommonJSModule
+          ? _createJSModule(
+              code: command,
+              dirname: _scriptRoot,
+            )
+          : command,
       name ?? '<eval>',
       evalFlags ?? JSEvalFlag.GLOBAL,
     );

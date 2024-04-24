@@ -150,11 +150,17 @@ void _runJsIsolate(Map spawnMessage) async {
             msg[#code],
           );
           break;
+        case #setScriptRoot:
+          qjs.setScriptRoot(
+            msg[#scriptRoot],
+          );
+          break;
         case #evaluate:
           data = await qjs.evaluate(
             msg[#command],
             name: msg[#name],
             evalFlags: msg[#flag],
+            asCommonJSModule: msg[#asCommonJSModule],
           );
           break;
         case #close:
@@ -289,6 +295,19 @@ class IsolateQjs {
     return ret;
   }
 
+  Future<void> setScriptRoot(String scriptRoot) async {
+    _ensureEngine();
+    final evaluatePort = ReceivePort();
+    final sendPort = await _sendPort!;
+    sendPort.send({
+      #type: #setScriptRoot,
+      #scriptRoot: scriptRoot,
+      #port: evaluatePort.sendPort,
+    });
+    await evaluatePort.first;
+    evaluatePort.close();
+  }
+
   Future<void> setInternalModule(
     String moduleName,
     String code,
@@ -311,6 +330,7 @@ class IsolateQjs {
     String command, {
     String? name,
     int? evalFlags,
+    bool asCommonJSModule = false,
   }) async {
     _ensureEngine();
     final evaluatePort = ReceivePort();
@@ -320,6 +340,7 @@ class IsolateQjs {
       #command: command,
       #name: name,
       #flag: evalFlags,
+      #asCommonJSModule: asCommonJSModule,
       #port: evaluatePort.sendPort,
     });
     final result = await evaluatePort.first;
