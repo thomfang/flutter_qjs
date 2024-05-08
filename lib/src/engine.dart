@@ -13,10 +13,10 @@ typedef _JsModuleHandler = String Function(String name);
 /// Handler to manage unhandled promise rejection.
 typedef _JsHostPromiseRejectionHandler = void Function(dynamic reason);
 
-const _releaseFuncName = '__release__';
-
 /// Quickjs engine for flutter.
 class FlutterQjs {
+  static final String releaseFuncName = '__release__';
+
   Pointer<JSRuntime>? _rt;
   Pointer<JSContext>? _ctx;
 
@@ -42,6 +42,7 @@ class FlutterQjs {
   final _JsHostPromiseRejectionHandler? hostPromiseRejectionHandler;
 
   String _scriptRoot = Directory.current.path;
+  final _internalModule = <String, String>{};
 
   void setScriptRoot(String value) {
     if (_scriptRoot != value) {
@@ -49,10 +50,17 @@ class FlutterQjs {
     }
   }
 
-  final _internalModule = <String, String>{};
-
   void setInternalModule(String moduleName, String code) {
     _internalModule[moduleName] = code;
+  }
+
+  final _syncMethodHandlers = <String, dynamic Function(List args)>{};
+
+  void setSyncMethodHandler(
+    String methodName,
+    dynamic Function(List args) handler,
+  ) {
+    _syncMethodHandlers[methodName] = handler;
   }
 
   FlutterQjs({
@@ -148,7 +156,7 @@ class FlutterQjs {
     }
     _isActived = false;
     _internalModule.clear();
-    evaluate('$_releaseFuncName()');
+    evaluate('$releaseFuncName()');
 
     final rt = _rt;
     final ctx = _ctx;
@@ -247,21 +255,37 @@ class FlutterQjs {
         },
       };
 
-      this.$_releaseFuncName = () => {
+      let callSyncMethod = (methodName, args) => {
+        const { result, error } = handlers['callSyncMethod'](
+          String(methodName),
+          args,
+        );
+        if (error != null) {
+          throw new Error(error);
+        }
+        return result;
+      };
+
+      this.__callSyncMethod__ = (methodName, ...args) => {
+        return callSyncMethod(methodName, args)
+      };
+
+      this.$releaseFuncName = () => {
         for (let key in handlers) {
-          delete handlers[key]
+          delete handlers[key];
         }
         for (let key in cachedModules) {
-          delete cachedModules[key]
+          delete cachedModules[key];
         }
         for (let key in timerCallbackMap) {
-          delete timerCallbackMap[key]
+          delete timerCallbackMap[key];
         }
         this.setTimeout = 
           this.clearTimeout =
           this.console =
           this.__require__ =
-          this.__trigger_timer__ = null
+          this.__trigger_timer__ =
+          this.__callSyncMethod__ = null;
       };
     }''',
     );
@@ -284,6 +308,7 @@ class FlutterQjs {
         'isInternalModule': _isInternalModule,
         'importInternalModule': _importInternalModule,
         'importModule': _importModule,
+        'callSyncMethod': _callSyncMethod,
       },
     ]);
 
@@ -389,7 +414,7 @@ class FlutterQjs {
       function exec(module, exports, require) {
         $code;
       }
-      exec(m, e, r)
+      exec(m, e, r);
       return m;
     })()''';
   }
@@ -402,6 +427,19 @@ class FlutterQjs {
         $code
       );
     })()''';
+  }
+
+  Map<String, dynamic> _callSyncMethod(String methodName, List args) {
+    final func = _syncMethodHandlers[methodName];
+    print('handlers: ${_syncMethodHandlers.keys}');
+    if (func != null) {
+      return {
+        'result': func(args),
+      };
+    }
+    return {
+      'error': "Failed executed '$methodName', no method handler.",
+    };
   }
 
   /// Dispatch JavaScript Event loop.

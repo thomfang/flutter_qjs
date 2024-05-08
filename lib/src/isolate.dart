@@ -103,7 +103,20 @@ dynamic _decodeData(dynamic data, {Map<dynamic, dynamic>? cache}) {
   return data;
 }
 
-void _runJsIsolate(Map spawnMessage) async {
+typedef EngineInitializer = void Function(FlutterQjs qjs);
+
+void Function(Map spawnMessage) _createEntryPoint(
+  EngineInitializer initializer,
+) {
+  return (Map spawnMessage) {
+    _runJsIsolate(
+      spawnMessage,
+      initializer,
+    );
+  };
+}
+
+void _runJsIsolate(Map spawnMessage, EngineInitializer initializer) async {
   SendPort sendPort = spawnMessage[#port];
   ReceivePort port = ReceivePort();
   sendPort.send(port.sendPort);
@@ -138,6 +151,8 @@ void _runJsIsolate(Map spawnMessage) async {
         #level: level,
         #message: message,
       });
+
+  initializer(qjs);
 
   port.listen((msg) async {
     var data;
@@ -215,11 +230,13 @@ class IsolateQjs {
     this.hostPromiseRejectionHandler,
   });
 
+  static EngineInitializer? initializer;
+
   _ensureEngine() {
     if (_sendPort != null) return;
     ReceivePort port = ReceivePort();
     Isolate.spawn(
-      _runJsIsolate,
+      _createEntryPoint(initializer ?? (qjs) {}),
       {
         #port: port.sendPort,
         #stackSize: stackSize,
@@ -279,6 +296,7 @@ class IsolateQjs {
     final sendPort = _sendPort;
     _sendPort = null;
     consoleMessage = null;
+    initializer = null;
     if (sendPort == null) return;
     final ret = sendPort.then((sendPort) async {
       final closePort = ReceivePort();
