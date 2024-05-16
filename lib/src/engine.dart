@@ -240,6 +240,9 @@ class FlutterQjs {
       };
 
       this.clearTimeout = (timerId) => {
+        if (typeof timerId !== 'number' || timerCallbackMap[timerId] == null) {
+          return;
+        }
         delete timerCallbackMap[timerId];
         handlers['clearTimeout'](timerId);
       };
@@ -339,7 +342,7 @@ class FlutterQjs {
     );
   }
 
-  void _clearTimeout(int timerId) {
+  void _clearTimeout(num timerId) {
     var timer = _timerMap[timerId];
     if (timer != null) {
       if (timer.isActive) {
@@ -431,15 +434,21 @@ class FlutterQjs {
 
   Map<String, dynamic> _callSyncMethod(String methodName, List args) {
     final func = _syncMethodHandlers[methodName];
-    print('handlers: ${_syncMethodHandlers.keys}');
-    if (func != null) {
+    if (func == null) {
+      return {
+        'error': "Failed executed '$methodName', no method handler.",
+      };
+    }
+
+    try {
       return {
         'result': func(args),
       };
+    } catch (e) {
+      return {
+        'error': '$e',
+      };
     }
-    return {
-      'error': "Failed executed '$methodName', no method handler.",
-    };
   }
 
   /// Dispatch JavaScript Event loop.
