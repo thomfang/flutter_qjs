@@ -10,6 +10,11 @@ part of '../flutter_qjs.dart';
 /// Handler function to manage js module.
 typedef _JsModuleHandler = String Function(String name);
 
+typedef _JsAwaitingMethodHandler = Map<String, dynamic> Function(
+  String methodName,
+  List args,
+);
+
 /// Handler to manage unhandled promise rejection.
 typedef _JsHostPromiseRejectionHandler = void Function(dynamic reason);
 
@@ -37,6 +42,8 @@ class FlutterQjs {
 
   /// Handler function to manage js module.
   final _JsModuleHandler? moduleHandler;
+
+  final _JsAwaitingMethodHandler? awaitingMethodHandler;
 
   /// Handler function to manage js module.
   final _JsHostPromiseRejectionHandler? hostPromiseRejectionHandler;
@@ -69,6 +76,7 @@ class FlutterQjs {
     this.timeout,
     this.memoryLimit,
     this.hostPromiseRejectionHandler,
+    this.awaitingMethodHandler,
   });
 
   _ensureEngine() {
@@ -273,6 +281,21 @@ class FlutterQjs {
         return callSyncMethod(methodName, args)
       };
 
+      let awaitingMethod = (methodName, args) => {
+        const { result, error } = handlers['callAwaitingMethod'](
+          String(methodName),
+          args,
+        );
+        if (error != null) {
+          throw new Error(error);
+        }
+        return result;
+      };
+
+      this.__callAwaitingMethod__ = (methodName, ...args) => {
+        return awaitingMethod(methodName, args)
+      };
+
       this.$releaseFuncName = () => {
         for (let key in handlers) {
           delete handlers[key];
@@ -288,7 +311,8 @@ class FlutterQjs {
           this.console =
           this.__require__ =
           this.__trigger_timer__ =
-          this.__callSyncMethod__ = null;
+          this.__callSyncMethod__ =
+          this.__callAwaitingMethod__ = null;
       };
     }''',
     );
@@ -312,6 +336,7 @@ class FlutterQjs {
         'importInternalModule': _importInternalModule,
         'importModule': _importModule,
         'callSyncMethod': _callSyncMethod,
+        'callAwaitingMethod': _callAwaitingMethod,
       },
     ]);
 
@@ -444,6 +469,22 @@ class FlutterQjs {
       return {
         'result': func(args),
       };
+    } catch (e) {
+      return {
+        'error': '$e',
+      };
+    }
+  }
+
+  Map<String, dynamic> _callAwaitingMethod(String methodName, List args) {
+    if (awaitingMethodHandler == null) {
+      return {
+        'error': "Failed executed '$methodName', no method handler.",
+      };
+    }
+
+    try {
+      return awaitingMethodHandler!(methodName, args);
     } catch (e) {
       return {
         'error': '$e',

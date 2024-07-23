@@ -146,6 +146,25 @@ void _runJsIsolate(Map spawnMessage, EngineInitializer initializer) async {
       malloc.free(ret);
       return retString;
     },
+    awaitingMethodHandler: (methodName, args) {
+      final ptr = calloc<Pointer<Utf8>>();
+      ptr.value = Pointer.fromAddress(ptr.address);
+
+      sendPort.send({
+        #type: #callMethod,
+        #methodName: methodName,
+        #args: args,
+        #ptr: ptr.address,
+      });
+
+      while (ptr.value.address == ptr.address) sleep(Duration(microseconds: 1));
+      final ret = ptr.value;
+      malloc.free(ptr);
+
+      final retString = ret.toDartString();
+      malloc.free(ret);
+      return jsonDecode(retString);
+    },
   )..consoleMessage = (level, message) => sendPort.send({
         #type: #console,
         #level: level,
@@ -280,6 +299,32 @@ class IsolateQjs {
             );
           }
           break;
+        case #callMethod:
+          final methodName = msg[#methodName];
+          final args = msg[#args];
+          final ptr = Pointer<Pointer>.fromAddress(msg[#ptr]);
+
+          if (awaitingMethodHandler == null) {
+            ptr.value = jsonEncode({
+              'error':
+                  'Failed execute $methodName, method handler not set yet.',
+            }).toNativeUtf8();
+          } else {
+            try {
+              final val = awaitingMethodHandler!(
+                methodName,
+                args,
+              );
+              ptr.value = jsonEncode({
+                'result': val,
+              }).toNativeUtf8();
+            } catch (e) {
+              ptr.value = jsonEncode({
+                'error': e.toString(),
+              }).toNativeUtf8();
+            }
+          }
+          break;
       }
     }, onDone: () {
       close();
@@ -290,6 +335,7 @@ class IsolateQjs {
   }
 
   void Function(String level, String message)? consoleMessage;
+  dynamic Function(String methodName, List args)? awaitingMethodHandler;
 
   /// Free Runtime and close isolate thread that can be recreate when evaluate again.
   close() {
@@ -297,6 +343,7 @@ class IsolateQjs {
     _sendPort = null;
     consoleMessage = null;
     initializer = null;
+    awaitingMethodHandler = null;
     if (sendPort == null) return;
     final ret = sendPort.then((sendPort) async {
       final closePort = ReceivePort();
