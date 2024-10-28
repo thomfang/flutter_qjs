@@ -164,6 +164,10 @@ class FlutterQjs {
     }
     _isActived = false;
     _internalModule.clear();
+    for (final timer in _timerMap.values) {
+      timer.cancel();
+    }
+    _timerMap.clear();
     evaluate('$releaseFuncName()');
 
     final rt = _rt;
@@ -257,11 +261,11 @@ class FlutterQjs {
 
       this.console = {
         log: (...args) => {
-          let stringArgs = args.map(e => String(e));
+          let stringArgs = args.map(e => typeof e === 'object' ? JSON.stringify(e) : String(e));
           handlers['consoleLog'](stringArgs);
         },
         error: (...args) => {
-          let stringArgs = args.map(e => String(e));
+          let stringArgs = args.map(e => typeof e === 'object' ? JSON.stringify(e) : String(e));
           handlers['consoleError'](stringArgs);
         },
       };
@@ -357,7 +361,7 @@ class FlutterQjs {
           if (consoleMessage != null) {
             consoleMessage!(
               'error',
-              'Failed trigger timeout'
+              'Failed trigger timeout\n'
                   ' > error: ${e.message}\n'
                   ' > stack: ${e.stack}',
             );
@@ -432,19 +436,18 @@ class FlutterQjs {
     required String code,
     required String dirname,
   }) {
-    return '''(function () {
+    return '''((factory) => {
       var m = {};
       var e = {};
       m.exports = e;
       function r(filePath) {
         return __require__(filePath, '$dirname');
       }
-      function exec(module, exports, require) {
-        $code;
-      }
-      exec(m, e, r);
+      factory(m, e, r);
       return m;
-    })()''';
+    })((module, exports, require) => {
+      $code;
+    })''';
   }
 
   String _createJSONModule({
